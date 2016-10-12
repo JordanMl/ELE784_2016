@@ -22,17 +22,18 @@
 
 MODULE_LICENSE("Dual BSD/GPL");
 
+//----Function prototypes-----
 int buf_init(void);
 void buf_exit(void);
 int buf_open (struct inode *inode, struct file *flip);
 int buf_release (struct inode *inode, struct file *flip);
-
 ssize_t buf_read (struct file *flip, char __user *ubuf, size_t count,
                   loff_t *f_ops);
 ssize_t buf_write (struct file *flip, const char __user *ubuf, size_t count,
                    loff_t *f_ops);
 long buf_ioctl (struct file *flip, unsigned int cmd, unsigned long arg);
 
+//----Data structures-----
 struct BufStruct
 {
     unsigned int InIdx;
@@ -50,13 +51,13 @@ struct Buf_Dev
     struct semaphore SemBuf;
     unsigned short numWriter;
     unsigned short numReader;
-    dev_t dev;  ///voir cdev_init   cdev_add
+    dev_t dev;  //voir cdev_init   cdev_add
     struct cdev cdev;
     struct class *BufferDev_class;
 } BDev;
 
-///Structure à peupler, fonctions accessibles par l'utilisateur
-struct file_operations Buf_fops =
+//Structure à peupler, fonctions accessibles par l'utilisateur
+struct file_operations Buf_fops =   
 {
     .owner = THIS_MODULE,
     .open = buf_open,
@@ -65,6 +66,9 @@ struct file_operations Buf_fops =
     .write = buf_write,
     .unlocked_ioctl = buf_ioctl,
 };
+
+
+//----Functions-----
 
 //Initialisation du pilote
 int buf_init(void) {
@@ -85,11 +89,11 @@ int buf_init(void) {
 
 	 //Creer semaphore pour BDev
 
-	//Init du BDev
+	 //Init du BDev
 	 BDev.ReadBuf = ReadBuf;
 	 BDev.WriteBuf = WriteBuf;
 	 BDev.numWriter = 0;
-     BDev.numReader = 0;
+    BDev.numReader = 0;
 
     //Allocation dynamique de l'unité-matériel
     result = alloc_chrdev_region (&BDev.dev, 0, 1, "MyBufferDev" );
@@ -103,7 +107,7 @@ int buf_init(void) {
     device_create(BDev.BufferDev_class, NULL, BDev.dev, NULL, "MyBufferDev_node");
     cdev_init(&BDev.cdev, &Buf_fops);
     BDev.cdev.owner = THIS_MODULE;
-    if(cdev_add(&BDev.cdev, BDev.dev, 1) < 0)
+    if(cdev_add(&BDev.cdev, BDev.dev, 1) < 0) 
         printk(KERN_WARNING"BDev ERROR IN cdev_add (%s:%s:%u)\n", __FILE__, __FUNCTION__, __LINE__);
 
     return 0;
@@ -111,9 +115,9 @@ int buf_init(void) {
 
 ///Fermeture du pilote
 void buf_exit(void) {
-    cdev_del(&BDev.cdev);
-    unregister_chrdev_region(BDev.dev, 1);
-    device_destroy(BDev.BufferDev_class, BDev.dev);
+    cdev_del(&BDev.cdev);   //remove cdev from the system
+    unregister_chrdev_region(BDev.dev, 1);   //free major number allocation
+    device_destroy(BDev.BufferDev_class, BDev.dev);	
     class_destroy(BDev.BufferDev_class);
 
     printk(KERN_ALERT"Buffer_exit (%s:%u) => CharPilote is dead !!\n", __FUNCTION__, __LINE__);
