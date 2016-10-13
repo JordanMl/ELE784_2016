@@ -25,13 +25,13 @@ MODULE_LICENSE("Dual BSD/GPL");
 //----Function prototypes-----
 int buf_init(void);
 void buf_exit(void);
-int buf_open (struct inode *inode, struct file *flip);
-int buf_release (struct inode *inode, struct file *flip);
-ssize_t buf_read (struct file *flip, char __user *ubuf, size_t count,
+int buf_open (struct inode *inode, struct file *filp);
+int buf_release (struct inode *inode, struct file *filp);
+ssize_t buf_read (struct file *filp, char __user *ubuf, size_t count,
                   loff_t *f_ops);
-ssize_t buf_write (struct file *flip, const char __user *ubuf, size_t count,
+ssize_t buf_write (struct file *filp, const char __user *ubuf, size_t count,
                    loff_t *f_ops);
-long buf_ioctl (struct file *flip, unsigned int cmd, unsigned long arg);
+long buf_ioctl (struct file *filp, unsigned int cmd, unsigned long arg);
 
 //----Data structures-----
 struct BufStruct
@@ -57,7 +57,7 @@ struct Buf_Dev
 } BDev;
 
 //Structure à peupler, fonctions accessibles par l'utilisateur
-struct file_operations Buf_fops =   
+struct file_operations Buf_fops =
 {
     .owner = THIS_MODULE,
     .open = buf_open,
@@ -87,12 +87,13 @@ int buf_init(void) {
     Buffer.BufSize = DEFAULT_BUFSIZE;
     Buffer.Buffer = BufTab;
 
-	 //Creer semaphore pour BDev
+    //Init semaphore pour BDev
+    sema_init (&BDev.SemBuf, 1);
 
-	 //Init du BDev
-	 BDev.ReadBuf = ReadBuf;
-	 BDev.WriteBuf = WriteBuf;
-	 BDev.numWriter = 0;
+	//Init du BDev
+	BDev.ReadBuf = ReadBuf;
+	BDev.WriteBuf = WriteBuf;
+	BDev.numWriter = 0;
     BDev.numReader = 0;
 
     //Allocation dynamique de l'unité-matériel
@@ -107,7 +108,7 @@ int buf_init(void) {
     device_create(BDev.BufferDev_class, NULL, BDev.dev, NULL, "MyBufferDev_node");
     cdev_init(&BDev.cdev, &Buf_fops);
     BDev.cdev.owner = THIS_MODULE;
-    if(cdev_add(&BDev.cdev, BDev.dev, 1) < 0) 
+    if(cdev_add(&BDev.cdev, BDev.dev, 1) < 0)
         printk(KERN_WARNING"BDev ERROR IN cdev_add (%s:%s:%u)\n", __FILE__, __FUNCTION__, __LINE__);
 
     return 0;
@@ -117,14 +118,42 @@ int buf_init(void) {
 void buf_exit(void) {
     cdev_del(&BDev.cdev);   //remove cdev from the system
     unregister_chrdev_region(BDev.dev, 1);   //free major number allocation
-    device_destroy(BDev.BufferDev_class, BDev.dev);	
+    device_destroy(BDev.BufferDev_class, BDev.dev);
     class_destroy(BDev.BufferDev_class);
 
     printk(KERN_ALERT"Buffer_exit (%s:%u) => CharPilote is dead !!\n", __FUNCTION__, __LINE__);
 }
 
 //Accès au pilote par l'usager
-int buf_open (struct inode *inode, struct file *flip){
+int buf_open (struct inode *inode, struct file *filp){
+
+    /*
+    struct Buf_Dev *dev;
+    dev = container_of (inode->i_cdev, struct Buf_Dev, Bdev); //identifie l'unité materielle
+    filp->private_data = dev;
+    */
+
+    //Ouverture pour ecriture
+    if ( (filp->f_flags & O_ACCMODE) = = O_WRONLY){
+
+        if (BDev.numWriter!=0){
+            return ENOTTY;
+        }
+        BDev.numWriter=1;
+    }
+    //Ouverture pour lecture/ecriture
+    else if ( (filp->f_flags & O_ACCMODE) = = O_RDWR){
+
+       if (BDev.numWriter!=0){
+            return ENOTTY;
+        }
+       BDev.numWriter=1;
+    }
+    //Ouveture en lecture seule
+    else if ( (filp->f_flags & O_ACCMODE) = = O_RDONLY){
+        BDev.numReader++;
+    }
+
     printk(KERN_WARNING"buf_open (%s:%u)\n", __FUNCTION__, __LINE__);
 	return 0;
 }
@@ -132,6 +161,8 @@ int buf_open (struct inode *inode, struct file *flip){
 //Libération du pilote par l'usager
 int buf_release (struct inode *inode, struct file *flip) {
     printk(KERN_WARNING"buf_release (%s:%u)\n", __FUNCTION__, __LINE__);
+
+
 	return 0;
 }
 
