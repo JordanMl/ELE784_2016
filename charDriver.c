@@ -70,6 +70,32 @@ struct file_operations Buf_fops =
 
 //----Functions-----
 
+
+int BufIn (struct BufStruct *Buf, unsigned short *Data)
+{
+    if (Buf->BufFull)
+        return -1;
+    Buf->BufEmpty = 0;
+    Buf->Buffer[Buf->InIdx] = *Data;
+    Buf->InIdx = (Buf->InIdx + 1) % Buf->BufSize;
+    if (Buf->InIdx == Buf->OutIdx)
+        Buf->BufFull = 1;
+    return 0;
+}
+
+int BufOut (struct BufStruct *Buf, unsigned short *Data)
+{
+    if (Buf->BufEmpty)
+        return -1;
+    Buf->BufFull = 0;
+    *Data = Buf->Buffer[Buf->OutIdx];
+    Buf->OutIdx = (Buf->OutIdx + 1) % Buf->BufSize;
+    if (Buf->OutIdx == Buf->InIdx)
+        Buf->BufEmpty = 1;
+    return 0;
+}
+
+
 //Initialisation du pilote
 int buf_init(void) {
 
@@ -166,7 +192,7 @@ int buf_open (struct inode *inode, struct file *filp){
 //Libération du pilote par l'usager
 int buf_release (struct inode *inode, struct file *filp) {
 
-	 struct Buf_dev *dev = filp->private_data; 
+	 struct Buf_Dev *dev = filp->private_data; 
 
 	 if (filp->f_mode & FMODE_READ){
 	 	 down_read (&dev->rw_semBuf); 
@@ -186,11 +212,12 @@ int buf_release (struct inode *inode, struct file *filp) {
 ssize_t buf_read (struct file *filp, char __user *ubuf, size_t count,
                   loff_t *f_ops){
 
-	 char readCh; //caractere lu dans le buffer
-	 struct Buf_dev *dev = filp->private_data; 
+	 int i=0;
+	 unsigned short readCh = 0; //caractere lu dans le buffer
+	 struct Buf_Dev *dev = filp->private_data; 
 	 
 	 down_read (&dev->rw_semBuf);	 		
-	 for(int i=0, i<count, i++){
+	 for(i=0; i<count; i++){
 		 if (BufOut(&Buffer, &readCh)){
 			 break;			
 		 }
@@ -199,7 +226,7 @@ ssize_t buf_read (struct file *filp, char __user *ubuf, size_t count,
 	 copy_to_user(ubuf, &dev->ReadBuf, i); //copie des i caractères lus vers l'appli user
 	 up_read (&dev->rw_semBuf);	 
 
-	 printk(KERN_WARNING"buf_read : %c (%s:%u)\n", ch,  __FUNCTION__, __LINE__);
+	 printk(KERN_WARNING"buf_read : %c (%s:%u)\n", (char)readCh,  __FUNCTION__, __LINE__);
 	 return 0;
 
 }
@@ -222,26 +249,4 @@ module_init(buf_init);
 ///Point de sortie pilote
 module_exit(buf_exit);
 
-int BufIn (struct BufStruct *Buf, unsigned short *Data)
-{
-    if (Buf->BufFull)
-        return -1;
-    Buf->BufEmpty = 0;
-    Buf->Buffer[Buf->InIdx] = *Data;
-    Buf->InIdx = (Buf->InIdx + 1) % Buf->BufSize;
-    if (Buf->InIdx == Buf->OutIdx)
-        Buf->BufFull = 1;
-    return 0;
-}
 
-int BufOut (struct BufStruct *Buf, unsigned short *Data)
-{
-    if (Buf->BufEmpty)
-        return -1;
-    Buf->BufFull = 0;
-    *Data = Buf->Buffer[Buf->OutIdx];
-    Buf->OutIdx = (Buf->OutIdx + 1) % Buf->BufSize;
-    if (Buf->OutIdx == Buf->InIdx)
-        Buf->BufEmpty = 1;
-    return 0;
-}
