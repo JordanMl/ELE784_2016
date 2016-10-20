@@ -155,19 +155,25 @@ void buf_exit(void) {
 int buf_open (struct inode *inode, struct file *filp){
 
     
-	 struct Buf_Dev *dev; 
+	 struct Buf_Dev *dev = NULL; 
     dev = container_of (inode->i_cdev, struct Buf_Dev, cdev); 
 	 /*Container_of recupere un pointeur vers la struc Buf_dev qui contient cdev , "This macro takes a pointer to a field of type container_field,
     within a structure of type container_type, and returns a pointer to the containing structure" */
     filp->private_data = dev; //pointe vers la structure perso
-    
+    printk(KERN_ALERT"Buffer_open (%s:%u) \n => start open \n", __FUNCTION__, __LINE__);
+	 if (dev==NULL){
+		 printk(KERN_ALERT"Buffer_open (%s:%u) \n => Error : Buf_Dev dev = NULL \n", __FUNCTION__, __LINE__);
+	 }
+
     //Ouverture pour ecriture ou lecture/ecriture
     if ( ((filp->f_flags & O_ACCMODE) == O_WRONLY) || ((filp->f_flags & O_ACCMODE) == O_RDWR) ){
 
         if (dev->numWriter!=0){ 
+			printk(KERN_ALERT"Buffer_open (%s:%u) \n => numWriter!=0 -> ENOTTY \n", __FUNCTION__, __LINE__);
 			return ENOTTY;
 		  }
 		  down_write (&dev->rw_semBuf); //Capture le verrou d'ecriture
+		  printk(KERN_ALERT"Buffer_open (%s:%u) \n => Capture le verrou d'ecriture \n", __FUNCTION__, __LINE__);
 		  dev->numWriter++;
 		  up_write (&dev->rw_semBuf); //Relache le verrou d'ecriture
 			
@@ -196,11 +202,13 @@ int buf_release (struct inode *inode, struct file *filp) {
 
 	 if (filp->f_mode & FMODE_READ){
 	 	 down_read (&dev->rw_semBuf); 
+	    printk(KERN_ALERT"Buffer_release (%s:%u) \n => Capture le verrou de lecture (FMODE_READ)  \n", __FUNCTION__, __LINE__);
 		 dev->numReader--;
 	    up_read (&dev->rw_semBuf); 
 	 }
-	 if (filp->f_mode & FMODE_READ){
+	 if (filp->f_mode & FMODE_WRITE){
 	 	 down_write (&dev->rw_semBuf); 
+	    printk(KERN_ALERT"Buffer_release (%s:%u) \n => Capture le verrou d'ecriture (FMODE_READ))  \n", __FUNCTION__, __LINE__);
 		 dev->numWriter--;
 		 up_write (&dev->rw_semBuf);
 	 }
@@ -216,13 +224,15 @@ ssize_t buf_read (struct file *filp, char __user *ubuf, size_t count,
 	 unsigned short readCh = 0; //caractere lu dans le buffer
 	 struct Buf_Dev *dev = filp->private_data; 
 	 
-	 down_read (&dev->rw_semBuf);	 		
+	 down_read (&dev->rw_semBuf);	 	
+    printk(KERN_ALERT"Buffer_read (%s:%u) \n => Capture le verrou de lecture  \n", __FUNCTION__, __LINE__);	
 	 for(i=0; i<count; i++){
 		 if (BufOut(&Buffer, &readCh)){
 			 break;			
 		 }
 		 dev->ReadBuf[i] = readCh;  //le caractere lu est stocké dans le buffer temporaire	
 	 }
+	 printk(KERN_ALERT"Buffer_read (%s:%u) \n => lecture de %d caracters  \n", __FUNCTION__, __LINE__,i);	
 	 copy_to_user(ubuf, &dev->ReadBuf, i); //copie des i caractères lus vers l'appli user
 	 up_read (&dev->rw_semBuf);	 
 
@@ -231,11 +241,20 @@ ssize_t buf_read (struct file *filp, char __user *ubuf, size_t count,
 
 }
 
-ssize_t buf_write (struct file *flip, const char __user *ubuf, size_t count,
+ssize_t buf_write (struct file *filp, const char __user *ubuf, size_t count,
                    loff_t *f_ops){
 
-    printk(KERN_WARNING"buf_write (%s:%u)\n", __FUNCTION__, __LINE__);
-	 return 0;
+    unsigned short userCh = 0; //caracteres passés par le user
+	 struct Buf_Dev *dev = filp->private_data; 
+
+	 printk(KERN_WARNING"buf_write (%s:%u)\n", __FUNCTION__, __LINE__);
+	 //TEST Copie d'un caractere
+    down_write (&dev->rw_semBuf);	
+	 copy_from_user(&userCh, ubuf, 1);
+	 BufIn(&Buffer, &userCh);
+	 printk(KERN_WARNING"buf_write (%s:%u)\n  Ecriture du caractere : %c  \n   ", __FUNCTION__, __LINE__,userCh);
+	 up_write (&dev->rw_semBuf);
+	 return count;
 }
 
 long buf_ioctl (struct file *flip, unsigned int cmd, unsigned long arg){
