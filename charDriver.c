@@ -48,12 +48,12 @@ struct Buf_Dev
 {
     unsigned short *ReadBuf;
     unsigned short *WriteBuf;
-    struct semaphore SemBuf;
+    struct rw_semaphore rw_semBuf;
     unsigned short numWriter;
     unsigned short numReader;
-    dev_t dev;  //voir cdev_init   cdev_add
-    struct cdev cdev;
-    struct class *BufferDev_class;
+    dev_t dev;  							/* Device number */
+    struct cdev cdev;  					/* Char device structure */
+    struct class *BufferDev_class;  
 } BDev;
 
 //Structure à peupler, fonctions accessibles par l'utilisateur
@@ -73,7 +73,7 @@ struct file_operations Buf_fops =
 //Initialisation du pilote
 int buf_init(void) {
 
-    unsigned short BufTab[DEFAULT_BUFSIZE]; //Tableau -> Buffer circulaire
+    //unsigned short BufTab[DEFAULT_BUFSIZE]; //Tableau -> Buffer circulaire
     unsigned short ReadBuf[READWRITE_BUFSIZE]; ///Tableau -> Read Buffer
     unsigned short WriteBuf[READWRITE_BUFSIZE]; ///Tableau -> Write Buffer
     int result = 0;
@@ -85,15 +85,15 @@ int buf_init(void) {
     Buffer.BufFull = 0;
     Buffer.BufEmpty = 1;
     Buffer.BufSize = DEFAULT_BUFSIZE;
-    Buffer.Buffer = BufTab;
+    Buffer.Buffer = kmalloc(Buffer.BufSize, GFP_KERNEL); //dynamic allocation to create the circular buffer
 
-    //Init semaphore pour BDev
-    sema_init (&BDev.SemBuf, 1);
+    //Init rw semaphore pour BDev
+    init_rwsem (&BDev.rw_semBuf);
 
-	//Init du BDev
-	BDev.ReadBuf = ReadBuf;
-	BDev.WriteBuf = WriteBuf;
-	BDev.numWriter = 0;
+	 //Init du BDev
+	 BDev.ReadBuf = ReadBuf;
+	 BDev.WriteBuf = WriteBuf;
+	 BDev.numWriter = 0;
     BDev.numReader = 0;
 
     //Allocation dynamique de l'unité-matériel
@@ -116,7 +116,8 @@ int buf_init(void) {
 
 ///Fermeture du pilote
 void buf_exit(void) {
-    cdev_del(&BDev.cdev);   //remove cdev from the system
+    kfree(Buffer.Buffer); //Free cicular buffer memory
+	 cdev_del(&BDev.cdev);   //remove cdev from the system
     unregister_chrdev_region(BDev.dev, 1);   //free major number allocation
     device_destroy(BDev.BufferDev_class, BDev.dev);
     class_destroy(BDev.BufferDev_class);
@@ -127,50 +128,79 @@ void buf_exit(void) {
 //Accès au pilote par l'usager
 int buf_open (struct inode *inode, struct file *filp){
 
-    /*
-    struct Buf_Dev *dev;
-    dev = container_of (inode->i_cdev, struct Buf_Dev, Bdev); //identifie l'unité materielle
-    filp->private_data = dev;
-    */
+    
+	 struct Buf_Dev *dev; 
+    dev = container_of (inode->i_cdev, struct Buf_Dev, cdev); 
+	 /*Container_of recupere un pointeur vers la struc Buf_dev qui contient cdev , "This macro takes a pointer to a field of type container_field,
+    within a structure of type container_type, and returns a pointer to the containing structure" */
+    filp->private_data = dev; //pointe vers la structure perso
+    
+    //Ouverture pour ecriture ou lecture/ecriture
+    if ( ((filp->f_flags & O_ACCMODE) == O_WRONLY) || ((filp->f_flags & O_ACCMODE) == O_RDWR) ){
 
-    //Ouverture pour ecriture
-    if ( (filp->f_flags & O_ACCMODE) = = O_WRONLY){
-
-        if (BDev.numWriter!=0){
-            return ENOTTY;
-        }
-        BDev.numWriter=1;
+        if (dev->numWriter!=0){ 
+			return ENOTTY;
+		  }
+		  down_write (&dev->rw_semBuf); //Capture le verrou d'ecriture
+		  dev->numWriter++;
+		  up_write (&dev->rw_semBuf); //Relache le verrou d'ecriture
+			
+		  if((filp->f_flags & O_ACCMODE) == O_RDWR)
+		  		printk(KERN_WARNING"buf_open in read/write mode (%s:%u)\n", __FUNCTION__, __LINE__);
+		  if ((filp->f_flags & O_ACCMODE) == O_WRONLY)
+				printk(KERN_WARNING"buf_open in write only mode (%s:%u)\n", __FUNCTION__, __LINE__);
     }
-    //Ouverture pour lecture/ecriture
-    else if ( (filp->f_flags & O_ACCMODE) = = O_RDWR){
-
-       if (BDev.numWriter!=0){
-            return ENOTTY;
-        }
-       BDev.numWriter=1;
-    }
+    
     //Ouveture en lecture seule
-    else if ( (filp->f_flags & O_ACCMODE) = = O_RDONLY){
-        BDev.numReader++;
+    else if ( (filp->f_flags & O_ACCMODE) == O_RDONLY){
+		  down_read (&dev->rw_semBuf); //Capture un verrou de lecture
+        dev->numReader++;
+		  up_read (&dev->rw_semBuf); //Relache le verrou de lecture			
+		  printk(KERN_WARNING"buf_open in read only mode (%s:%u)\n", __FUNCTION__, __LINE__);
     }
 
-    printk(KERN_WARNING"buf_open (%s:%u)\n", __FUNCTION__, __LINE__);
-	return 0;
+    printk(KERN_WARNING"buf_open success (%s:%u)\n", __FUNCTION__, __LINE__);
+	 return 0;
 }
 
 //Libération du pilote par l'usager
-int buf_release (struct inode *inode, struct file *flip) {
-    printk(KERN_WARNING"buf_release (%s:%u)\n", __FUNCTION__, __LINE__);
+int buf_release (struct inode *inode, struct file *filp) {
 
+	 struct Buf_dev *dev = filp->private_data; 
 
-	return 0;
+	 if (filp->f_mode & FMODE_READ){
+	 	 down_read (&dev->rw_semBuf); 
+		 dev->numReader--;
+	    up_read (&dev->rw_semBuf); 
+	 }
+	 if (filp->f_mode & FMODE_READ){
+	 	 down_write (&dev->rw_semBuf); 
+		 dev->numWriter--;
+		 up_write (&dev->rw_semBuf);
+	 }
+	
+	 printk(KERN_WARNING"buf_release (%s:%u)\n", __FUNCTION__, __LINE__);	
+	 return 0;
 }
 
-ssize_t buf_read (struct file *flip, char __user *ubuf, size_t count,
+ssize_t buf_read (struct file *filp, char __user *ubuf, size_t count,
                   loff_t *f_ops){
 
-    printk(KERN_WARNING"buf_read (%s:%u)\n", __FUNCTION__, __LINE__);
-	return 0;
+	 char readCh; //caractere lu dans le buffer
+	 struct Buf_dev *dev = filp->private_data; 
+	 
+	 down_read (&dev->rw_semBuf);	 		
+	 for(int i=0, i<count, i++){
+		 if (BufOut(&Buffer, &readCh)){
+			 break;			
+		 }
+		 dev->ReadBuf[i] = readCh;  //le caractere lu est stocké dans le buffer temporaire	
+	 }
+	 copy_to_user(ubuf, &dev->ReadBuf, i); //copie des i caractères lus vers l'appli user
+	 up_read (&dev->rw_semBuf);	 
+
+	 printk(KERN_WARNING"buf_read : %c (%s:%u)\n", ch,  __FUNCTION__, __LINE__);
+	 return 0;
 
 }
 
@@ -178,7 +208,7 @@ ssize_t buf_write (struct file *flip, const char __user *ubuf, size_t count,
                    loff_t *f_ops){
 
     printk(KERN_WARNING"buf_write (%s:%u)\n", __FUNCTION__, __LINE__);
-	return 0;
+	 return 0;
 }
 
 long buf_ioctl (struct file *flip, unsigned int cmd, unsigned long arg){
