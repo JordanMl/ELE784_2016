@@ -118,14 +118,14 @@ int buf_init(void) {
     init_rwsem (&BDev.rw_semBuf);
 
 	 //Init du BDev
-	 BDev.ReadBuf = ReadBuf;
-	 BDev.WriteBuf = WriteBuf;
-	 BDev.numWriter = 0;
+	BDev.ReadBuf = ReadBuf;
+	BDev.WriteBuf = WriteBuf;
+	BDev.numWriter = 0;
     BDev.numReader = 0;
 
     //Init des files d'attentes
-    init_waitqueue_head (&BDev->inq);
-    init_waitqueue_head (&BDev->outq);
+    init_waitqueue_head (&BDev.inq);
+    init_waitqueue_head (&BDev.outq);
 
     //Allocation dynamique de l'unité-matériel
     result = alloc_chrdev_region (&BDev.dev, 0, 1, "MyBufferDev" );
@@ -160,15 +160,15 @@ void buf_exit(void) {
 int buf_open (struct inode *inode, struct file *filp){
 
 
-	 struct Buf_Dev *dev = NULL;
+	struct Buf_Dev *dev = NULL;
     dev = container_of (inode->i_cdev, struct Buf_Dev, cdev);
 	 /*Container_of recupere un pointeur vers la struc Buf_dev qui contient cdev , "This macro takes a pointer to a field of type container_field,
     within a structure of type container_type, and returns a pointer to the containing structure" */
     filp->private_data = dev; //pointe vers la structure perso
     printk(KERN_ALERT"Buffer_open (%s:%u) \n => start open \n", __FUNCTION__, __LINE__);
-	 if (dev==NULL){
-		 printk(KERN_ALERT"Buffer_open (%s:%u) \n => Error : Buf_Dev dev = NULL \n", __FUNCTION__, __LINE__);
-	 }
+	if (dev==NULL){
+        printk(KERN_ALERT"Buffer_open (%s:%u) \n => Error : Buf_Dev dev = NULL \n", __FUNCTION__, __LINE__);
+	}
 
     //Ouverture pour ecriture ou lecture/ecriture
     if ( ((filp->f_flags & O_ACCMODE) == O_WRONLY) || ((filp->f_flags & O_ACCMODE) == O_RDWR) ){
@@ -176,31 +176,29 @@ int buf_open (struct inode *inode, struct file *filp){
         if (dev->numWriter!=0){
 			printk(KERN_ALERT"Buffer_open (%s:%u) \n => numWriter!=0 -> ENOTTY \n", __FUNCTION__, __LINE__);
 			return ENOTTY;
-		  }
-		  down_write (&dev->rw_semBuf); //Capture le verrou d'ecriture
-		  printk(KERN_ALERT"Buffer_open (%s:%u) \n => Capture le verrou d'ecriture \n", __FUNCTION__, __LINE__);
-		  dev->numWriter++;
-		  up_write (&dev->rw_semBuf); //Relache le verrou d'ecriture
+        }
+		down_write (&dev->rw_semBuf); //Capture le verrou d'ecriture
+		printk(KERN_ALERT"Buffer_open (%s:%u) \n => Capture le verrou d'ecriture \n", __FUNCTION__, __LINE__);
+		dev->numWriter++;
+		up_write (&dev->rw_semBuf); //Relache le verrou d'ecriture
 
-		  if((filp->f_flags & O_ACCMODE) == O_RDWR)
-		  		printk(KERN_WARNING"buf_open in read/write mode (%s:%u)\n", __FUNCTION__, __LINE__);
-		  if ((filp->f_flags & O_ACCMODE) == O_WRONLY)
-				printk(KERN_WARNING"buf_open in write only mode (%s:%u)\n", __FUNCTION__, __LINE__);
+		if((filp->f_flags & O_ACCMODE) == O_RDWR)
+            printk(KERN_WARNING"buf_open in read/write mode (%s:%u)\n", __FUNCTION__, __LINE__);
+		if ((filp->f_flags & O_ACCMODE) == O_WRONLY)
+            printk(KERN_WARNING"buf_open in write only mode (%s:%u)\n", __FUNCTION__, __LINE__);
     }
 
     //Ouveture en lecture seule
     else if ( (filp->f_flags & O_ACCMODE) == O_RDONLY){
-		  down_read (&dev->rw_semBuf); //Captmode (%s:%u)\n", __FUNCTION__, __LINE__);
-    }
-
-    printk(KERN_WARNING"buf_open success (%s:%u)\n", __FUNCTION__ure un verrou de lecture
+        down_read (&dev->rw_semBuf); //Captmode (%s:%u)\n", __FUNCTION__, __LINE__);
+        printk(KERN_WARNING"buf_open success (%s:%u)\n", __FUNCTION__, __LINE__); //capture un verrou de lecture
         dev->numReader++;
-		  up_read (&dev->rw_semBuf); //Relache le verrou de lecture
-		  printk(KERN_WARNING"buf_open in read only mode (%s:%u)\n", __FUNCTION__, __LINE__);
+        up_read (&dev->rw_semBuf); //Relache le verrou de lecture
+		printk(KERN_WARNING"buf_open in read only mode (%s:%u)\n", __FUNCTION__, __LINE__);
     }
 
     printk(KERN_WARNING"buf_open success (%s:%u)\n", __FUNCTION__, __LINE__);
-	 return 0;
+    return 0;
 }
 
 //Libération du pilote par l'usager
@@ -209,16 +207,16 @@ int buf_release (struct inode *inode, struct file *filp) {
 	 struct Buf_Dev *dev = filp->private_data;
 
 	 if (filp->f_mode & FMODE_READ){
-	 	 down_read (&dev->rw_semBuf);
+        down_read (&dev->rw_semBuf);
 	    printk(KERN_ALERT"Buffer_release (%s:%u) \n => Capture le verrou de lecture (FMODE_READ)  \n", __FUNCTION__, __LINE__);
-		 dev->numReader--;
+		(dev->numReader)--;
 	    up_read (&dev->rw_semBuf);
 	 }
 	 if (filp->f_mode & FMODE_WRITE){
-	 	 down_write (&dev->rw_semBuf);
+	 	down_write (&dev->rw_semBuf);
 	    printk(KERN_ALERT"Buffer_release (%s:%u) \n => Capture le verrou d'ecriture (FMODE_READ))  \n", __FUNCTION__, __LINE__);
-		 dev->numWriter--;
-		 up_write (&dev->rw_semBuf);
+        (dev->numWriter)--;
+		up_write (&dev->rw_semBuf);
 	 }
 
 	 printk(KERN_WARNING"buf_release (%s:%u)\n", __FUNCTION__, __LINE__);
@@ -231,62 +229,85 @@ ssize_t buf_read (struct file *filp, char __user *ubuf, size_t count,
 	 unsigned short readCh = 0; //caractere lu dans le buffer
 	 struct Buf_Dev *dev = filp->private_data;
 
-     //Vérifie si des données sont disponible
-     while(Buffer->BufEmpty){
+     printk(KERN_ALERT"buf_read : start (%s:%u) \n", __FUNCTION__, __LINE__);
+     //Début région critique
+	 down_read (&dev->rw_semBuf);
+
+     //Boucle : tant que le buffer circulaire est vide
+     while(Buffer.BufEmpty){
+        up_read (&dev->rw_semBuf); //libère le sémaphore avant de dormir
+        printk(KERN_ALERT"buf_read : read sleep (%s:%u) \n", __FUNCTION__, __LINE__);
         if(filp->f_flags & O_NONBLOCK){
             return -EAGAIN;
         }
-        wait_event_interruptible (BDev->outq,Buffer->BufEmpty);
+        if(wait_event_interruptible (&dev->outq,Buffer.BufEmpty){  //endort la tache
+            return -ERESTARTSYS;
+        }
+        down_read (&dev->rw_semBuf);
      }
 
-	 //Début région critique
-	 down_read (&dev->rw_semBuf);
-     printk(KERN_ALERT"Buffer_read (%s:%u) \n => Capture le verrou de lecture  \n", __FUNCTION__, __LINE__);
+     printk(KERN_ALERT"buf_read : reading data from Buffer... (%s:%u) \n", __FUNCTION__, __LINE__);
 	 for(int i=0; i<count; i++){
 		 if (BufOut(&Buffer, &readCh)){
 			 break;
 		 }
-		 dev->ReadBuf[i] = readCh;  //le caractere lu est stocké dans le buffer temporaire
+		 &dev->ReadBuf[i] = readCh;  //le caractere lu est stocké dans le buffer temporaire
 		 nbRead++;
 	 }
-	 printk(KERN_ALERT"Buffer_read (%s:%u) \n => lecture de %d caracters  \n", __FUNCTION__, __LINE__,i);
+	 printk(KERN_ALERT"buf_read : function reads %n caracter(s)(%s:%u) \n", __FUNCTION__, __LINE__,nbRead);
 
+     printk(KERN_ALERT"buf_read : data copy to user... (%s:%u) \n", __FUNCTION__, __LINE__);
 	 //Tentative d'envoie des caractères lu à l'utilisateur
-	 if(copy_to_user(ubuf, &dev->ReadBuf, i)){
+	 if(copy_to_user(ubuf, &dev->ReadBuf, nbRead)){
+        //Tous les bits n'ont pas été echangé
         up_read (&dev->rw_semBuf); //libère le sémaphore avant de renvoyer l'erreur
         return -EFAULT;
 	 }
     //Fin région critique
 	 up_read (&dev->rw_semBuf);
+	 printk(KERN_ALERT"buf_read : END (%s:%u) \n", __FUNCTION__, __LINE__);
 
-	 printk(KERN_WARNING"buf_read : %c (%s:%u)\n", (char)readCh,  __FUNCTION__, __LINE__);
 	 return nbRead;
 
 }
 
+//
+//
+// return : nbWrite = nombre de caractere ecrit dans le buffer circulaire
 ssize_t buf_write (struct file *filp, const char __user *ubuf, size_t count,
                    loff_t *f_ops){
+     unsigned short userCh = 0;
      int nbWrite = 0;
-     unsigned short userCh = 0; //caracteres passés par le user
-	 struct Buf_Dev *dev = filp->private_data;
+     struct Buf_Dev *dev = filp->private_data;
 
-	 printk(KERN_WARNING"buf_write (%s:%u)\n", __FUNCTION__, __LINE__);
+	 printk(KERN_WARNING"buf_write start(%s:%u)\n", __FUNCTION__, __LINE__);
 
-     //Vérifie si des données peuvent êtres écrites
+     //Début région critique
+     down_write (&dev->rw_semBuf);
+
+     //Boucle : tant que le buffer d'ecriture est plein
      while(Buffer->BufFull){
+        up_write (&dev->rw_semBuf); //libère le sémaphore avant de dormir
+        printk(KERN_WARNING"buf_write sleep(%s:%u)\n", __FUNCTION__, __LINE__);
         if(filp->f_flags & O_NONBLOCK){
             return -EAGAIN;
         }
-        wait_event_interruptible (BDev->inq,Buffer->BufFull);
-     }
+        if (wait_event_interruptible (&dev->inq,Buffer.BufFull)){ //endort la tâche
+            return -ERESTARTSYS;
+        }
+        down_write (&dev->rw_semBuf);
+    }
 
-	 //Début région critique
-     down_write (&dev->rw_semBuf);
+     printk(KERN_ALERT"buf_write : data copy from user... (%s:%u) \n", __FUNCTION__, __LINE__);
      //Tentative de récupération des caractères envoyé par l'utilisateur
 	 if(copy_from_user(&dev->WriteBuf, ubuf, count)){
+        //Tous les bits n'ont pas été echangé
         up_write (&dev->rw_semBuf); //libère le sémaphore avant de renvoyer l'erreur
         return -EFAULT;
 	 }
+
+     printk(KERN_ALERT"buf_write : writing data to Buffer... (%s:%u) \n", __FUNCTION__, __LINE__);
+     //Copie du buffer temporaire WriteBuf vers le buffer circulaire Buffer
 	 for(int i = 0; i<count; i++){
         userCh = dev->WriteBuf[i];
         if(BufIn(&Buffer, &userCh)){
@@ -294,10 +315,12 @@ ssize_t buf_write (struct file *filp, const char __user *ubuf, size_t count,
         }
         nbWrite++;
 	 }
-	 printk(KERN_WARNING"buf_write (%s:%u)\n  Ecriture du caractere : %c  \n   ", __FUNCTION__, __LINE__,userCh);
+	 printk(KERN_ALERT"buf_write : function wrotes %n caracter(s)(%s:%u) \n", __FUNCTION__, __LINE__,nbWrite);
+
 	 //Fin de région critique
 	 up_write (&dev->rw_semBuf);
 	 return nbWrite;
+	 printk(KERN_WARNING"buf_write END(%s:%u)\n", __FUNCTION__, __LINE__,userCh);
 }
 
 long buf_ioctl (struct file *flip, unsigned int cmd, unsigned long arg){
