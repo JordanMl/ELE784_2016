@@ -16,7 +16,6 @@
 
 ///Nouveaux includes :
 #include <linux/rwsem.h>  ///semaphore lecteur/ecrivain
-#include <linux/sched.h> // Required for task states (TASK_INTERRUPTIBLE etc )
 
 #define READWRITE_BUFSIZE 16
 #define DEFAULT_BUFSIZE 256
@@ -105,7 +104,7 @@ int buf_init(void) {
     unsigned short ReadBuf[READWRITE_BUFSIZE]; ///Tableau -> Read Buffer
     unsigned short WriteBuf[READWRITE_BUFSIZE]; ///Tableau -> Write Buffer
     int result = 0;
-    printk(KERN_ALERT"Buffer_init (%s:%u) => charDriverDev is Alive !!\n", __FUNCTION__, __LINE__);
+    printk(KERN_ALERT"Buffer_init (%s:%u) => CharPilote is Alive !!\n", __FUNCTION__, __LINE__);
 
     //Init du Buffer
     Buffer.InIdx = 0;
@@ -129,15 +128,15 @@ int buf_init(void) {
     init_waitqueue_head (&BDev.outq);
 
     //Allocation dynamique de l'unité-matériel
-    result = alloc_chrdev_region (&BDev.dev, 0, 1, "charDriverDev" );
+    result = alloc_chrdev_region (&BDev.dev, 0, 1, "MyBufferDev" );
     if (result< 0)
         printk(KERN_WARNING"buf_init ERROR IN alloc_chrdev_region (%s:%s:%u)\n", __FILE__, __FUNCTION__, __LINE__);
     else
         printk(KERN_WARNING"buf_init : MAJOR = %u MINOR = %u \n", MAJOR(BDev.dev), MINOR(BDev.dev));
 
     //Création de notre noeud d'unité-matériel
-    BDev.BufferDev_class =  class_create(THIS_MODULE, "charDriverDev");
-    device_create(BDev.BufferDev_class, NULL, BDev.dev, NULL, "charDriverDev_node");
+    BDev.BufferDev_class =  class_create(THIS_MODULE, "MyBufferDev");
+    device_create(BDev.BufferDev_class, NULL, BDev.dev, NULL, "MyBufferDev_node");
     cdev_init(&BDev.cdev, &Buf_fops);
     BDev.cdev.owner = THIS_MODULE;
     if(cdev_add(&BDev.cdev, BDev.dev, 1) < 0)
@@ -149,12 +148,12 @@ int buf_init(void) {
 ///Fermeture du pilote
 void buf_exit(void) {
     kfree(Buffer.Buffer); //Free cicular buffer memory
-    cdev_del(&BDev.cdev);   //remove cdev from the system
+	 cdev_del(&BDev.cdev);   //remove cdev from the system
     unregister_chrdev_region(BDev.dev, 1);   //free major number allocation
     device_destroy(BDev.BufferDev_class, BDev.dev);
     class_destroy(BDev.BufferDev_class);
 
-    printk(KERN_ALERT"Buffer_exit (%s:%u) => charDriverDev is dead !!\n", __FUNCTION__, __LINE__);
+    printk(KERN_ALERT"Buffer_exit (%s:%u) => CharPilote is dead !!\n", __FUNCTION__, __LINE__);
 }
 
 //Accès au pilote par l'usager
@@ -226,7 +225,7 @@ int buf_release (struct inode *inode, struct file *filp) {
 
 ssize_t buf_read (struct file *filp, char __user *ubuf, size_t count,
                   loff_t *f_ops){
-     int nbRead = 0, i=0;
+     int nbRead = 0;
 	 unsigned short readCh = 0; //caractere lu dans le buffer
 	 struct Buf_Dev *dev = filp->private_data;
 
@@ -241,21 +240,21 @@ ssize_t buf_read (struct file *filp, char __user *ubuf, size_t count,
         if(filp->f_flags & O_NONBLOCK){
             return -EAGAIN;
         }
-        if(wait_event_interruptible (dev->outq,Buffer.BufEmpty)){  //endort la tache
+        if(wait_event_interruptible (&dev->outq,Buffer.BufEmpty){  //endort la tache
             return -ERESTARTSYS;
         }
         down_read (&dev->rw_semBuf);
      }
 
      printk(KERN_ALERT"buf_read : reading data from Buffer... (%s:%u) \n", __FUNCTION__, __LINE__);
-	 for(i=0; i<count; i++){
+	 for(int i=0; i<count; i++){
 		 if (BufOut(&Buffer, &readCh)){
 			 break;
 		 }
-		 dev->ReadBuf[i] = readCh;  //le caractere lu est stocké dans le buffer temporaire
+		 &dev->ReadBuf[i] = readCh;  //le caractere lu est stocké dans le buffer temporaire
 		 nbRead++;
 	 }
-	 printk(KERN_ALERT"buf_read : function reads %d caracter(s)(%s:%u) \n",nbRead, __FUNCTION__, __LINE__);
+	 printk(KERN_ALERT"buf_read : function reads %n caracter(s)(%s:%u) \n", __FUNCTION__, __LINE__,nbRead);
 
      printk(KERN_ALERT"buf_read : data copy to user... (%s:%u) \n", __FUNCTION__, __LINE__);
 	 //Tentative d'envoie des caractères lu à l'utilisateur
@@ -278,7 +277,7 @@ ssize_t buf_read (struct file *filp, char __user *ubuf, size_t count,
 ssize_t buf_write (struct file *filp, const char __user *ubuf, size_t count,
                    loff_t *f_ops){
      unsigned short userCh = 0;
-     int nbWrite = 0, i = 0;
+     int nbWrite = 0;
      struct Buf_Dev *dev = filp->private_data;
 
 	 printk(KERN_WARNING"buf_write start(%s:%u)\n", __FUNCTION__, __LINE__);
@@ -287,13 +286,13 @@ ssize_t buf_write (struct file *filp, const char __user *ubuf, size_t count,
      down_write (&dev->rw_semBuf);
 
      //Boucle : tant que le buffer d'ecriture est plein
-     while(Buffer.BufFull){
+     while(Buffer->BufFull){
         up_write (&dev->rw_semBuf); //libère le sémaphore avant de dormir
         printk(KERN_WARNING"buf_write sleep(%s:%u)\n", __FUNCTION__, __LINE__);
         if(filp->f_flags & O_NONBLOCK){
             return -EAGAIN;
         }
-        if (wait_event_interruptible (dev->inq,Buffer.BufFull)){ //endort la tâche
+        if (wait_event_interruptible (&dev->inq,Buffer.BufFull)){ //endort la tâche
             return -ERESTARTSYS;
         }
         down_write (&dev->rw_semBuf);
@@ -309,19 +308,19 @@ ssize_t buf_write (struct file *filp, const char __user *ubuf, size_t count,
 
      printk(KERN_ALERT"buf_write : writing data to Buffer... (%s:%u) \n", __FUNCTION__, __LINE__);
      //Copie du buffer temporaire WriteBuf vers le buffer circulaire Buffer
-	 for(i = 0; i<count; i++){
+	 for(int i = 0; i<count; i++){
         userCh = dev->WriteBuf[i];
         if(BufIn(&Buffer, &userCh)){
             break;
         }
         nbWrite++;
 	 }
-	 printk(KERN_ALERT"buf_write : function wrotes %d caracter(s)(%s:%u) \n",nbWrite, __FUNCTION__, __LINE__);
+	 printk(KERN_ALERT"buf_write : function wrotes %n caracter(s)(%s:%u) \n", __FUNCTION__, __LINE__,nbWrite);
 
 	 //Fin de région critique
 	 up_write (&dev->rw_semBuf);
 	 return nbWrite;
-	 printk(KERN_WARNING"buf_write END(%s:%u)\n", __FUNCTION__, __LINE__);
+	 printk(KERN_WARNING"buf_write END(%s:%u)\n", __FUNCTION__, __LINE__,userCh);
 }
 
 long buf_ioctl (struct file *flip, unsigned int cmd, unsigned long arg){
