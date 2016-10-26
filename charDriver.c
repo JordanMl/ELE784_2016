@@ -25,10 +25,10 @@
 /* attribution des numero de commande ioctl */
 #define CHARDRIVER_IOC_MAGIC 'j'
 
-#define CHARDRIVER_IOC_GETNUMDATA _IOR(CHARDRIVER_IOC_MAGIC,0,char)
-#define CHARDRIVER_IOC_GETNUMREADER _IOR(CHARDRIVER_IOC_MAGIC,1,char)
-#define CHARDRIVER_IOC_GETBUFSIZE _IOR(CHARDRIVER_IOC_MAGIC,2,char)
-#define CHARDRIVER_IOC_SETBUFSIZE _IOW(CHARDRIVER_IOC_MAGIC,3,char)
+#define CHARDRIVER_IOC_GETNUMDATA _IOR(CHARDRIVER_IOC_MAGIC,0,unsigned short)
+#define CHARDRIVER_IOC_GETNUMREADER _IOR(CHARDRIVER_IOC_MAGIC,1,unsigned short)
+#define CHARDRIVER_IOC_GETBUFSIZE _IOR(CHARDRIVER_IOC_MAGIC,2,unsigned short)
+#define CHARDRIVER_IOC_SETBUFSIZE _IOW(CHARDRIVER_IOC_MAGIC,3,unsigned short)
 
 #define CHARDRIVER_IOC_MAXNR 3
 
@@ -53,7 +53,7 @@ struct BufStruct
     unsigned int OutIdx;
     unsigned short BufFull;
     unsigned short BufEmpty;
-    unsigned int BufSize;
+    unsigned short BufSize;
     unsigned short *Buffer;
 } Buffer;
 
@@ -65,6 +65,7 @@ struct Buf_Dev
     struct rw_semaphore rw_semBuf;
     unsigned short numWriter;
     unsigned short numReader;
+    unsigned short numData;
     dev_t dev;  							/* Device number */
     struct cdev cdev;  					/* Char device structure */
     struct class *BufferDev_class;
@@ -135,6 +136,7 @@ int buf_init(void) {
 	BDev.WriteBuf = WriteBuf;
 	BDev.numWriter = 0;
     BDev.numReader = 0;
+    BDev.numData = 0;
 
     //Init des files d'attentes
     init_waitqueue_head (&BDev.inq);
@@ -175,7 +177,7 @@ int buf_open (struct inode *inode, struct file *filp){
 
 	struct Buf_Dev *dev = NULL;
     dev = container_of (inode->i_cdev, struct Buf_Dev, cdev);
-	 /*Container_of recupere un pointeur vers la struc Buf_dev qui contient cdev , "This macro takes a pointer to a field of type container_field,
+	 /* Container_of recupere un pointeur vers la struc Buf_dev qui contient cdev , "This macro takes a pointer to a field of type container_field,
     within a structure of type container_type, and returns a pointer to the containing structure" */
     filp->private_data = dev; //pointe vers la structure perso
     printk(KERN_ALERT"Buffer_open (%s:%u) \n => start open \n", __FUNCTION__, __LINE__);
@@ -243,7 +245,8 @@ ssize_t buf_read (struct file *filp, char __user *ubuf, size_t count,
 	 struct Buf_Dev *dev = filp->private_data;
 
      printk(KERN_ALERT"buf_read : start (%s:%u) \n", __FUNCTION__, __LINE__);
-     //Début région critique
+
+     ///Début région critique
 	 down_read (&dev->rw_semBuf);
 
      //Boucle : tant que le buffer circulaire est vide
@@ -265,6 +268,7 @@ ssize_t buf_read (struct file *filp, char __user *ubuf, size_t count,
 			 break;
 		 }
 		 dev->ReadBuf[i] = readCh;  //le caractere lu est stocké dans le buffer temporaire
+		 dev->numData--;
 		 nbRead++;
 	 }
 	 printk(KERN_ALERT"buf_read : function reads %d caracter(s)(%s:%u) \n",nbRead, __FUNCTION__, __LINE__);
@@ -276,7 +280,7 @@ ssize_t buf_read (struct file *filp, char __user *ubuf, size_t count,
         up_read (&dev->rw_semBuf); //libère le sémaphore avant de renvoyer l'erreur
         return -EFAULT;
 	 }
-    //Fin région critique
+    ///Fin région critique
 	 up_read (&dev->rw_semBuf);
 	 printk(KERN_ALERT"buf_read : END (%s:%u) \n", __FUNCTION__, __LINE__);
 
@@ -327,18 +331,23 @@ ssize_t buf_write (struct file *filp, const char __user *ubuf, size_t count,
             break;
         }
         nbWrite++;
+        dev->numData++;
 	 }
 	 printk(KERN_ALERT"buf_write : function wrotes %d caracter(s)(%s:%u) \n",nbWrite, __FUNCTION__, __LINE__);
 
 	 //Fin de région critique
 	 up_write (&dev->rw_semBuf);
-	 return nbWrite;
+
 	 printk(KERN_WARNING"buf_write END(%s:%u)\n", __FUNCTION__, __LINE__);
+	 return nbWrite;
 }
 
-long buf_ioctl (struct file *flip, unsigned int cmd, unsigned long arg){
+long buf_ioctl (struct file *filp, unsigned int cmd, unsigned long arg){
 
-    int err = 0, retval = 0;
+    int err = 0, i = 0;
+    unsigned short retval = 0, tmp;
+    struct Buf_Dev *dev = filp->private_data;
+    unsigned short *newBuf;
 
     /* verification que la commande corespond à notre pilote */
     if(_IOC_TYPE(cmd) != CHARDRIVER_IOC_MAGIC) return -ENOTTY;
@@ -354,13 +363,39 @@ long buf_ioctl (struct file *flip, unsigned int cmd, unsigned long arg){
     if(err) return -EFAULT;
 
     switch(cmd){
-        case CHARDRIVER_IOC_GETNUMDATA :   //TODO
+        case CHARDRIVER_IOC_GETNUMDATA :   retval = __put_user(dev->numData,(int __user*)arg);
                                            break;
-        case CHARDRIVER_IOC_GETNUMREADER : //TODO
+        case CHARDRIVER_IOC_GETNUMREADER : retval = __put_user(dev->numReader,(int __user *)arg);
                                            break;
-        case CHARDRIVER_IOC_GETBUFSIZE :   //TODO
+        case CHARDRIVER_IOC_GETBUFSIZE :   retval = __put_user(Buffer.BufSize, (int __user *)arg);
                                            break;
-        case CHARDRIVER_IOC_SETBUFSIZE :   //TODO
+        case CHARDRIVER_IOC_SETBUFSIZE :   if(!capable(CAP_SYS_ADMIN)){
+                                                return -EPERM;
+                                           }
+                                           retval = __get_user(tmp, (int __user *)arg);
+
+                                           ///Debut région critique
+                                           down_write(&dev->rw_semBuf);
+                                           //Vérifie que la taille du nouveau Buffer puisse contenir toute les données présentes
+                                           if(tmp<(dev->numData)){
+                                                up_write(&dev->rw_semBuf); //libère le sémaphore avant de retourner un code d'erreur
+                                                return -EADV;
+                                           }
+
+                                           //allocation d'une nouvelle zone mémoire
+                                           newBuf = kmalloc(tmp, GFP_KERNEL);
+                                           //remplis la nouvelle zone mémoire avec les données de notre buffer
+                                           for (i=0;i<(dev->numData);i++){
+                                            newBuf[i] = Buffer.Buffer[i];
+                                           }
+                                           //libère l'ancienne zone mémoire de notre buffer
+                                           kfree(Buffer.Buffer);
+                                           //fait pointer notre buffer vers la nouvelle zone mémoire
+                                           Buffer.Buffer = newBuf;
+                                           Buffer.BufSize = tmp;
+
+                                           ///Fin région critique
+                                           up_write(&dev->rw_semBuf);
                                            break;
         default : return -ENOTTY;
     }
