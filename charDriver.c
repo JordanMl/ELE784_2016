@@ -17,9 +17,21 @@
 ///Nouveaux includes :
 #include <linux/rwsem.h>  ///semaphore lecteur/ecrivain
 #include <linux/sched.h> // Required for task states (TASK_INTERRUPTIBLE etc )
+#include <linux/ioctl.h> // Used for ioctl command
 
 #define READWRITE_BUFSIZE 16
 #define DEFAULT_BUFSIZE 256
+
+/* attribution des numero de commande ioctl */
+#define CHARDRIVER_IOC_MAGIC 'j'
+
+#define CHARDRIVER_IOC_GETNUMDATA _IOR(CHARDRIVER_IOC_MAGIC,0,char)
+#define CHARDRIVER_IOC_GETNUMREADER _IOR(CHARDRIVER_IOC_MAGIC,1,char)
+#define CHARDRIVER_IOC_GETBUFSIZE _IOR(CHARDRIVER_IOC_MAGIC,2,char)
+#define CHARDRIVER_IOC_SETBUFSIZE _IOW(CHARDRIVER_IOC_MAGIC,3,char)
+
+#define CHARDRIVER_IOC_MAXNR 3
+
 
 MODULE_LICENSE("Dual BSD/GPL");
 
@@ -102,8 +114,8 @@ int BufOut (struct BufStruct *Buf, unsigned short *Data)
 int buf_init(void) {
 
     //unsigned short BufTab[DEFAULT_BUFSIZE]; //Tableau -> Buffer circulaire
-    unsigned short ReadBuf[READWRITE_BUFSIZE]; ///Tableau -> Read Buffer
-    unsigned short WriteBuf[READWRITE_BUFSIZE]; ///Tableau -> Write Buffer
+    unsigned short ReadBuf[READWRITE_BUFSIZE]; //Tableau -> Read Buffer
+    unsigned short WriteBuf[READWRITE_BUFSIZE]; //Tableau -> Write Buffer
     int result = 0;
     printk(KERN_ALERT"Buffer_init (%s:%u) => charDriverDev is Alive !!\n", __FUNCTION__, __LINE__);
 
@@ -146,7 +158,7 @@ int buf_init(void) {
     return 0;
 }
 
-///Fermeture du pilote
+//Fermeture du pilote
 void buf_exit(void) {
     kfree(Buffer.Buffer); //Free cicular buffer memory
     cdev_del(&BDev.cdev);   //remove cdev from the system
@@ -326,8 +338,35 @@ ssize_t buf_write (struct file *filp, const char __user *ubuf, size_t count,
 
 long buf_ioctl (struct file *flip, unsigned int cmd, unsigned long arg){
 
+    int err = 0, retval = 0;
+
+    /* verification que la commande corespond à notre pilote */
+    if(_IOC_TYPE(cmd) != CHARDRIVER_IOC_MAGIC) return -ENOTTY;
+    if(_IOC_TYPE(cmd) > CHARDRIVER_IOC_MAXNR) return -ENOTTY;
+
+    /* verification de la possibilité de lire ou ecrire */
+    if(_IOC_DIR(cmd) & _IOC_READ){
+        err = !access_ok(VERIFY_WRITE, (void __user *)arg, _IOC_SIZE(cmd));
+    }
+    else if(_IOC_DIR(cmd) & _IOC_READ){
+        err = !access_ok(VERIFY_READ, (void __user *)arg, _IOC_SIZE(cmd));
+    }
+    if(err) return -EFAULT;
+
+    switch(cmd){
+        case CHARDRIVER_IOC_GETNUMDATA :   //TODO
+                                           break;
+        case CHARDRIVER_IOC_GETNUMREADER : //TODO
+                                           break;
+        case CHARDRIVER_IOC_GETBUFSIZE :   //TODO
+                                           break;
+        case CHARDRIVER_IOC_SETBUFSIZE :   //TODO
+                                           break;
+        default : return -ENOTTY;
+    }
+
     printk(KERN_WARNING"buf_ioctl (%s:%u)\n", __FUNCTION__, __LINE__);
-	return 0;
+	return retval;
 }
 
 ///Point d'entree pilote
