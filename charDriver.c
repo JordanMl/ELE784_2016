@@ -14,11 +14,11 @@
 #include <asm/atomic.h>
 #include <asm/uaccess.h>
 
-
 ///Nouveaux includes :
 #include <linux/rwsem.h>  ///semaphore lecteur/ecrivain
 #include <linux/sched.h> // Required for task states (TASK_INTERRUPTIBLE etc )
 #include <linux/ioctl.h> // Used for ioctl command
+#include "ioctlcmd.h"
 
 #define READWRITE_BUFSIZE 16
 #define DEFAULT_BUFSIZE 256
@@ -174,20 +174,6 @@ void buf_exit(void) {
 //Accès au pilote par l'usager
 int buf_open (struct inode *inode, struct file *filp){
 
-    /*
-    struct Buf_Dev *dev = NULL;
-    dev = container_of (inode->i_cdev, struct Buf_Dev, cdev);
-    filp->private_data = dev; //pointe vers la structure perso
-    printk(KERN_ALERT"Buffer_open (%s:%u) \n => start open \n", __FUNCTION__, __LINE__);
-	 if (dev==NULL){
-		 printk(KERN_ALERT"Buffer_open (%s:%u) \n => Error : Buf_Dev dev = NULL \n", __FUNCTION__, __LINE__);
-	 }
-    */
-	 /*Container_of recupere un pointeur vers la struc Buf_dev qui contient cdev , "This macro takes a pointer to a field of type container_field,
-    within a structure of type container_type, and returns a pointer to the containing structure" */
-
-
-
     //Ouverture pour ecriture ou lecture/ecriture
     if ( ((filp->f_flags & O_ACCMODE) == O_WRONLY) || ((filp->f_flags & O_ACCMODE) == O_RDWR) ){
 
@@ -244,9 +230,8 @@ ssize_t buf_read (struct file *filp, char __user *ubuf, size_t count,
                   loff_t *f_ops){
 
 	 int nbReadChar=0;
-	 //unsigned short readCh = 0; //caractere lu dans le buffer
-	 //struct Buf_Dev *dev = filp->private_data;
 
+     //Debut de region critique
 	 down_read (&BDev.rw_semBuf);
      printk(KERN_ALERT"Buffer_read (%s:%u) \n => Capture le verrou de lecture  \n", __FUNCTION__, __LINE__);
 
@@ -271,39 +256,20 @@ ssize_t buf_read (struct file *filp, char __user *ubuf, size_t count,
              printk(KERN_ALERT"Buffer_read (%s:%u) \n => Lecture dans le buffer : BDev.ReadBuf[%d] = %c  \n", __FUNCTION__, __LINE__,nbReadChar,BDev.ReadBuf[nbReadChar]);
              break;
          }
+         BDev.numData--;
      }
 
     printk(KERN_ALERT"Buffer_read (%s:%u) \n => lecture de %d caracters  \n", __FUNCTION__, __LINE__,nbReadChar);
-
+     //Tentative d'envoie des caractères lu à l'utilisateur
      if (copy_to_user(ubuf, BDev.ReadBuf, nbReadChar)) {
+         //Tous les bits n'ont pas été echangé
+         up_read (&BDev.rw_semBuf); //libère le sémaphore avant de renvoyer l'erreur
          return -EFAULT;
      }
     printk(KERN_ALERT"Buffer_read (%s:%u) \n => Copy to user OK  \n", __FUNCTION__, __LINE__);
+    ///Fin de region critique
     up_read (&BDev.rw_semBuf);
     return nbReadChar;
-
-
-	 // DEBUG CODE //
-	 /*
-	    printk(KERN_ALERT"Buffer_read (%s:%u) \n => Buffer.InIdx=%d  \n", __FUNCTION__, __LINE__,Buffer.InIdx);
-	    printk(KERN_ALERT"Buffer_read (%s:%u) \n => Buffer.OutIdx=%d  \n", __FUNCTION__, __LINE__,Buffer.OutIdx);
-        for(i=0; i<count; i++){
-        printk(KERN_ALERT"Buffer_read (%s:%u) \n => Lecture dans le buffer : Buffer.Buffer[%d] = %c  \n", __FUNCTION__, __LINE__,i,Buffer.Buffer[i]);
-             if (BufOut(&Buffer, &BDev.ReadBuf[i])){
-                 printk(KERN_ALERT"Buffer_read (%s:%u) \n => Lecture dans le buffer : BDev.ReadBuf[%d] = %c  \n", __FUNCTION__, __LINE__,i,BDev.ReadBuf[i]);
-                 break;
-             }
-         }
-
-        printk(KERN_ALERT"Buffer_read (%s:%u) \n => lecture de %d caracters  \n", __FUNCTION__, __LINE__,i);
-
-         if (copy_to_user(ubuf, BDev.ReadBuf, i)) {
-             return -EFAULT;
-         }
-        printk(KERN_ALERT"Buffer_read (%s:%u) \n => Copy to user OK  \n", __FUNCTION__, __LINE__);
-        up_read (&BDev.rw_semBuf);
-        return 0;
-     */
 }
 
 ssize_t buf_write (struct file *filp, const char __user *ubuf, size_t count,
@@ -343,127 +309,94 @@ ssize_t buf_write (struct file *filp, const char __user *ubuf, size_t count,
         }
         else{
             printk(KERN_WARNING"buf_write (%s:%u)\n  WriteBuf[%d]= %c copie dans Buffer\n", __FUNCTION__, __LINE__,nbWriteChar,BDev.WriteBuf[nbWriteChar]);
+            break;
         }
+        BDev.numData++;
      }
 	 printk(KERN_ALERT"buf_write : function reads %d caracter(s)(%s:%u) \n",nbWriteChar, __FUNCTION__, __LINE__);
 
-    /* DEBUG CODE
-    int i=0;
-
-     printk(KERN_WARNING"buf_write (%s:%u)\n", __FUNCTION__, __LINE__);
-	 //TEST Copie d'un caractere
-     printk(KERN_WARNING"buf_write (%s:%u)\n  Test, num reader=%d \n   ", __FUNCTION__, __LINE__,(unsigned int)BDev.numReader);
-     printk(KERN_WARNING"buf_write (%s:%u)\n  Test, num writer=%d \n   ", __FUNCTION__, __LINE__,(unsigned int)BDev.numWriter);
-
-     down_write (&BDev.rw_semBuf);
-
-	 if(copy_from_user(BDev.WriteBuf, ubuf, count)){
-        //Tous les bits n'ont pas été echangé
-        up_write (&BDev.rw_semBuf); //libère le sémaphore avant de renvoyer l'erreur
-        return -EFAULT;
-     }
-     printk(KERN_WARNING"buf_write (%s:%u)\n  copy_from_user: %d caracteres  \n   ", __FUNCTION__, __LINE__,(unsigned int)count);
-     for(i=0;i<count;i++){
-        printk(KERN_WARNING"buf_write (%s:%u)\n  BDev.WriteBuf[%d] = %c   \n   ", __FUNCTION__, __LINE__,i,BDev.WriteBuf[i]);
-     }
-
-     printk(KERN_WARNING" \n buf_write (%s:%u)\n  Write in the Buffer... \n \n", __FUNCTION__, __LINE__);
-     printk(KERN_WARNING"buf_write (%s:%u)\n  Test BufIn", __FUNCTION__, __LINE__);
-     for(i=0;i<count;i++){
-        if(BufIn(&Buffer, &BDev.WriteBuf[i])){
-            printk(KERN_WARNING"buf_write (%s:%u)\n  Bufin return < 0 ", __FUNCTION__, __LINE__);
-        }
-        else{
-            printk(KERN_WARNING"buf_write (%s:%u)\n  WriteBuf[%d]= %c copie dans Buffer\n", __FUNCTION__, __LINE__,i,BDev.WriteBuf[i]);
-        }
-     }
-     printk(KERN_WARNING"buf_write (%s:%u)\n  Test BufOut", __FUNCTION__, __LINE__);
-
-
-     for(i=0;i<count;i++){
-         if(BufOut(&Buffer, &bufOutTmp[i])){
-            printk(KERN_WARNING"buf_write (%s:%u)\n  Bufout return < 0 ", __FUNCTION__, __LINE__);
-         }
-         else{
-            printk(KERN_WARNING"buf_write (%s:%u)\n  Bufout return character : %c \n", __FUNCTION__, __LINE__,bufOutTmp[i]);
-         }
-
-     }
-     */
-
-     /////////////////////////////// DERNIER TEST
-     /*
-     int i = 0;
-     int nbWrite = 0;
-     unsigned short userCh = 0; //caracteres passés par le user
-	 struct Buf_Dev *dev = filp->private_data;
-
-	 printk(KERN_WARNING"buf_write (%s:%u)\n", __FUNCTION__, __LINE__);
-	 //TEST Copie d'un caractere
-	 nbWrite = dev->numReader;
-     printk(KERN_WARNING"buf_write (%s:%u)\n  Test, num reader=%i \n   ", __FUNCTION__, __LINE__,nbWrite);
-     nbWrite = dev->numWriter;
-     printk(KERN_WARNING"buf_write (%s:%u)\n  Test, num writer=%i \n   ", __FUNCTION__, __LINE__,nbWrite);
-
-     down_write (&dev->rw_semBuf);
-	 if(copy_from_user(&dev->WriteBuf, ubuf, count)){
-        //Tous les bits n'ont pas été echangé
-        up_write (&dev->rw_semBuf); //libère le sémaphore avant de renvoyer l'erreur
-        return -EFAULT;
-	  }
-     printk(KERN_WARNING"buf_write (%s:%u)\n  copy_from_user: %i caracteres  \n   ", __FUNCTION__, __LINE__,count);
-     printk(KERN_WARNING"buf_write (%s:%u)\n  Write in the Buffer... ", __FUNCTION__, __LINE__);
-     for(i=0;i<count;i++){
-        userCh = &dev->WriteBuf[i];
-        if(BufIn(&Buffer, &dev->WriteBuf[i])){
-            printk(KERN_WARNING"buf_write (%s:%u)\n  Bufin return < 0 ", __FUNCTION__, __LINE__);
-        }
-        else{
-            printk(KERN_WARNING"buf_write (%s:%u)\n  WriteBuf[%d]= %c -> Buffer\n", __FUNCTION__, __LINE__,i,userCh);
-        }
-     }
-     for(i=0;i<count;i++){
-         if(BufOut(&Buffer, &userCh)){
-            printk(KERN_WARNING"buf_write (%s:%u)\n  Bufout return < 0 ", __FUNCTION__, __LINE__);
-         }
-         else{
-            printk(KERN_WARNING"buf_write (%s:%u)\n  Bufout return character : %c", __FUNCTION__, __LINE__,userCh);
-         }
-
-     }
-     */
-     ///////
-
-
-     /*
-     if(BufOut(&Buffer, &userCh)){
-        printk(KERN_WARNING"buf_write (%s:%u)\n  Bufout return < 0 ", __FUNCTION__, __LINE__);
-     }
-     printk(KERN_WARNING"buf_write (%s:%u)\n  Value write in buffer : %c  \n   ", __FUNCTION__, __LINE__,userCh);
-*/
-     /*
-	 for(i = 0; i<count; i++){
-        userCh = dev->WriteBuf[i];
-        if(BufIn(&Buffer, &userCh)){
-            break;
-            printk(KERN_WARNING"buf_write (%s:%u)\n  Boucle ecriture dans Buffer - BufIn Full! ", __FUNCTION__, __LINE__);
-        }
-        printk(KERN_WARNING"buf_write (%s:%u)\n  Boucle ecriture dans Buffer - caractere : %c  \n   ", __FUNCTION__, __LINE__,userCh);
-        printk(KERN_WARNING"buf_write (%s:%u)\n  Boucle ecriture dans Buffer - nombre d'ecriture : %i  \n   ", __FUNCTION__, __LINE__,nbWrite);
-        nbWrite++;
-        dev->numData++;
-	 }
-     */
-
 	 printk(KERN_WARNING"buf_write (%s:%u)\n  END  \n   ", __FUNCTION__, __LINE__);
+	 ///Fin de region critique
 	 up_write (&BDev.rw_semBuf);
 	 return count;
 }
 
 long buf_ioctl (struct file *flip, unsigned int cmd, unsigned long arg){
 
-    printk(KERN_WARNING"buf_ioctl (%s:%u)\n", __FUNCTION__, __LINE__);
-	return 0;
+    int err = 0, i = 0;
+    long retval = 0;
+    unsigned int tmp;
+    unsigned char *newBuf;
+
+    /* verification que la commande corespond à notre pilote */
+    if(_IOC_TYPE(cmd) != CHARDRIVER_IOC_MAGIC){
+        printk(KERN_WARNING"ioctl(%s:%u) Magic number invalid %c", __FUNCTION__, __LINE__,_IOC_TYPE(cmd));
+        return -ENOTTY;
+    }
+    if(_IOC_NR(cmd) > CHARDRIVER_IOC_MAXNR) {
+        printk(KERN_WARNING"ioctl(%s:%u) numéro de commande non valide %d", __FUNCTION__, __LINE__,_IOC_NR(cmd));
+        return -ENOTTY;
+    }
+
+    /* verification de la possibilité de lire ou ecrire */
+    if(_IOC_DIR(cmd) & _IOC_READ){
+        err = !access_ok(VERIFY_WRITE, (void __user *)arg, _IOC_SIZE(cmd));
+        printk(KERN_WARNING"ioctl(%s:%u) erreur impossible de lire %d", __FUNCTION__, __LINE__,err);
+    }
+    else if(_IOC_DIR(cmd) & _IOC_READ){
+        err = !access_ok(VERIFY_READ, (void __user *)arg, _IOC_SIZE(cmd));
+        printk(KERN_WARNING"ioctl(%s:%u) erreur impossible d'écrire %d", __FUNCTION__, __LINE__,err);
+    }
+    if(err){
+        return -EFAULT;
+    }
+
+    switch(cmd){
+        case CHARDRIVER_IOC_GETNUMDATA :   retval = __put_user(BDev.numData,(int __user*)arg);
+                                           printk(KERN_WARNING"ioctl(%s:%u) GetNumData : %d /n", __FUNCTION__, __LINE__,BDev.numData);
+                                           break;
+        case CHARDRIVER_IOC_GETNUMREADER : retval = __put_user(BDev.numReader,(int __user *)arg);
+                                           printk(KERN_WARNING"ioctl(%s:%u) GetNumReader : %d /n", __FUNCTION__, __LINE__,BDev.numReader);
+                                           break;
+        case CHARDRIVER_IOC_GETBUFSIZE :   retval = __put_user(Buffer.BufSize, (int __user *)arg);
+                                           printk(KERN_WARNING"ioctl(%s:%u) GetBufSize : %d /n", __FUNCTION__, __LINE__,Buffer.BufSize);
+                                           break;
+        case CHARDRIVER_IOC_SETBUFSIZE :   if(!capable(CAP_SYS_ADMIN)){
+                                                printk(KERN_WARNING"ioctl(%s:%u) Permission non accordé/n", __FUNCTION__, __LINE__);
+                                                return -EPERM;
+                                           }
+                                           retval = __get_user(tmp, (int __user *)arg);
+
+                                           ///Debut région critique
+                                           down_write(&BDev.rw_semBuf);
+                                           //Vérifie que la taille du nouveau Buffer puisse contenir toute les données présentes
+                                           if(tmp<(BDev.numData)){
+                                                up_write(&BDev.rw_semBuf); //libère le sémaphore avant de retourner un code d'erreur
+                                                printk(KERN_WARNING"ioctl(%s:%u) BufSize %d < numData %d", __FUNCTION__, __LINE__,tmp,BDev.numData);
+                                                return -EADV;
+                                           }
+
+                                           //allocation d'une nouvelle zone mémoire
+                                           newBuf = kmalloc(tmp, GFP_KERNEL);
+                                           //remplis la nouvelle zone mémoire avec les données de notre buffer
+                                           for (i=0;i<(BDev.numData);i++){
+                                            newBuf[i] = Buffer.Buffer[i];
+                                           }
+                                           //libère l'ancienne zone mémoire de notre buffer
+                                           kfree(Buffer.Buffer);
+                                           //fait pointer notre buffer vers la nouvelle zone mémoire
+                                           Buffer.Buffer = newBuf;
+                                           Buffer.BufSize = tmp;
+
+                                           ///Fin région critique
+                                           up_write(&BDev.rw_semBuf);
+                                           printk(KERN_WARNING"ioctl(%s:%u) SetBufSize : %d", __FUNCTION__, __LINE__,Buffer.BufSize);
+                                           break;
+        default : return -ENOTTY;
+    }
+
+    printk(KERN_WARNING"buf_ioctl (%s:%u)\n   END /n ", __FUNCTION__, __LINE__);
+	return retval;
 }
 
 ///Point d'entree pilote
