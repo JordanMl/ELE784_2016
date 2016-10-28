@@ -18,6 +18,8 @@
 #include <linux/fcntl.h>
 #include <linux/sched.h>
 
+#include "ioctlcmd.h"
+
 
 void clrBuffer(void) {
     int c;
@@ -48,6 +50,8 @@ int openDriverRead(char blocking){
 	 }
 	 else{
 			printf("|Read Buffer : Error : Device is not open\n");
+            printf(" Press a key to continue \n");
+            getchar();
 	 }
 	 return devFd;
 }
@@ -71,6 +75,8 @@ int openDriverWrite(char blocking){
 	 }
 	 else{
 			printf("|Write Buffer : Error : Device is not open\n");
+            printf(" Press a key to continue \n");
+            getchar();
 	 }
 	 return devFd;
 }
@@ -93,6 +99,8 @@ int openDriverReadWrite(char blocking){
 	 }
 	 else{
 			printf("|Read/Write Buffer : Error : Device is not open\n");
+            printf(" Press a key to continue \n");
+            getchar();
 	 }
 	 return devFd;
 }
@@ -143,6 +151,28 @@ void readFunction(int devFd,char blocking) {
 
 }
 
+long ioctlFunction(int fd, int cmd,unsigned long arg){
+    long retval = 0;
+    switch(cmd){
+        // fonction getnumdata
+        case 1 :   retval = ioctl(fd,CHARDRIVER_IOC_GETNUMDATA,arg);
+                   break;
+        // fonction getnumreader
+        case 2 :    retval = ioctl(fd,CHARDRIVER_IOC_GETNUMREADER,arg);
+                    break;
+        // fonction getbufsize
+        case 3 :    retval = ioctl(fd,CHARDRIVER_IOC_GETBUFSIZE,arg);
+                    break;
+        //fonction getbufsize
+        case 4 :    retval = ioctl(fd,CHARDRIVER_IOC_SETBUFSIZE,arg);
+                    break;
+        default : return -1;
+    }
+    return retval;
+}
+
+
+
 void writeFunction(int devFd,char blocking) {
 
     int i=0;
@@ -187,7 +217,8 @@ void writeFunction(int devFd,char blocking) {
 	          printf("|Write Buffer|_ Error Read return an unknown negative value\n");
 	      }
 	      else if (status >= 0){
-	          printf("|Write Buffer|_ %d characters were written successfully\n",nbCharToWrite);
+               printf("|Write Buffer|_ %d characters were written successfully\n",status);
+	          //printf("|Write Buffer|_ %d characters were written successfully\n",nbCharToWrite);
 	      }
 	      //free(bufWrite); //free memory buffer
 	  }
@@ -201,6 +232,7 @@ int main(void) {
 		char usrChar = 0;
 		int devFd =  0; //File descriptor for the char device
 		int status = 0;
+        unsigned long bufferSize = 0;
 
 		char userChoice = '0';
 		char blocking = '0'; //0=nonBlocking 1=Blocking
@@ -212,7 +244,7 @@ int main(void) {
             printf("----------------------------------\n");
             printf("------Char Driver Application-----\n");
             printf("----------------------------------\n \n");
-            printf("MENU :\n ----- \n 1) Read \n 2) Write\n 3)Read & Write \n 4)Configure Buffer\n \n 5) Exit\n-> ");
+            printf("MENU :\n ----- \n 1) Read \n 2) Write\n 3) Read & Write \n 4) IOCTL Commands\n \n 5) Exit\n-> ");
             scanf("%c", &userChoice);
             clrBuffer();
 
@@ -229,33 +261,33 @@ int main(void) {
 
                     switch (userChoice){
                         case '1' :
-										blocking = 1;
-										devFd = openDriverRead(blocking); //Open driver in Blocking Read Mode
+                            blocking = 1;
+                            devFd = openDriverRead(blocking); //Open driver in Blocking Read Mode
 
-										if(devFd>0){
-											while(userChoice!='q'){
-												readFunction(devFd,blocking); //Read in bloking mode
-												printf("q to leave \nOther key to Quit\n->");
-												scanf("%c", &userChoice);
-		                					clrBuffer();
-											}
-											close(devFd);
-										}
+                            if(devFd>0){
+                                while(userChoice!='q'){
+                                    readFunction(devFd,blocking); //Read in bloking mode
+                                    printf("q to leave \nOther key to stay\n->");
+                                    scanf("%c", &userChoice);
+                                clrBuffer();
+                                }
+                                close(devFd);
+                            }
                             break;
 
                         case '2' :
-										blocking = 0;
-										devFd = openDriverRead(0); //Open driver in NonBlocking Read Mode
+                            blocking = 0;
+                            devFd = openDriverRead(0); //Open driver in NonBlocking Read Mode
 
-										if(devFd>0){
-											while(userChoice!='q'){
-												readFunction(devFd,blocking); //Read in Nonbloking mode
-												printf("q to leave \nOther key to Quit\n->");
-												scanf("%c", &userChoice);
-		                					clrBuffer();
-											}
-											close(devFd);
-										}
+                            if(devFd>0){
+                                while(userChoice!='q'){
+                                    readFunction(devFd,blocking); //Read in Nonbloking mode
+                                    printf("q to leave \nOther key to stay\n->");
+                                    scanf("%c", &userChoice);
+                                clrBuffer();
+                                }
+                                close(devFd);
+                            }
                             break;
                     }
                     break;
@@ -270,39 +302,39 @@ int main(void) {
 
                     switch (userChoice){
                         case '1' :
-                              blocking = 1;
-										devFd = openDriverWrite(blocking); //Open driver in Blocking Write Mode
+                            blocking = 1;
+                            devFd = openDriverWrite(blocking); //Open driver in Blocking Write Mode
 
-										if(devFd>0){
-											while(userChoice!='q'){
-												writeFunction(devFd,blocking); //Write in Nonbloking mode
-												printf("q to leave \nOther key to Quit\n->");
-												scanf("%c", &userChoice);
-		                					clrBuffer();
-											}
-											close(devFd);
-										}
+                            if(devFd>0){
+                                while(userChoice!='q'){
+                                    writeFunction(devFd,blocking); //Write in Nonbloking mode
+                                    printf("q to leave \nOther key to stay\n->");
+                                    scanf("%c", &userChoice);
+                                clrBuffer();
+                                }
+                                close(devFd);
+                            }
 
                             break;
                         case '2' :
-                              blocking = 0;
-										devFd = openDriverWrite(blocking); //Open driver in Blocking Write Mode
+                            blocking = 0;
+                            devFd = openDriverWrite(blocking); //Open driver in Blocking Write Mode
 
-										if(devFd>0){
-											while(userChoice!='q'){
-												writeFunction(devFd,blocking); //Write in Nonbloking mode
-												printf("q to leave \nOther key to Quit\n->");
-												scanf("%c", &userChoice);
-		                					clrBuffer();
-											}
-											close(devFd);
-										}
+                            if(devFd>0){
+                                while(userChoice!='q'){
+                                    writeFunction(devFd,blocking); //Write in Nonbloking mode
+                                    printf("q to leave \nOther key to stay\n->");
+                                    scanf("%c", &userChoice);
+                                clrBuffer();
+                                }
+                                close(devFd);
+                            }
                             break;
                     }
                     break;
 
                 case '3':  // RW (Read/Write access)
-						  clrTerminal();
+                    clrTerminal();
                     printf("------------Read/Write Buffer-----------\n");
                     printf("----------------------------------\n \n");
                     printf("    1) Block Read\n    2) NonBlock Read \n    3) Block Write\n    4) NonBlock Write\n ");
@@ -311,70 +343,120 @@ int main(void) {
 
                     switch (userChoice){
                         case '1' :
-										blocking = 1;
-										devFd = openDriverRead(blocking); //Open driver in Blocking Read Mode
+                            blocking = 1;
+                            devFd = openDriverReadWrite(blocking); //Open driver in Blocking Read Mode
 
-										if(devFd>0){
-											while(userChoice!='q'){
-												readFunction(devFd,blocking); //Read in bloking mode
-												printf("q to leave \nOther key to Quit\n->");
-												scanf("%c", &userChoice);
-		                					clrBuffer();
-											}
-											close(devFd);
-										}
+                            if(devFd>0){
+                                while(userChoice!='q'){
+                                    readFunction(devFd,blocking); //Read in bloking mode
+                                    printf("q to leave \nOther key to stay\n->");
+                                    scanf("%c", &userChoice);
+                                clrBuffer();
+                                }
+                                close(devFd);
+                            }
                             break;
 
                         case '2' :
-										blocking = 0;
-										devFd = openDriverRead(0); //Open driver in NonBlocking Read Mode
+                            blocking = 0;
+                            devFd = openDriverReadWrite(0); //Open driver in NonBlocking Read Mode
 
-										if(devFd>0){
-											while(userChoice!='q'){
-												readFunction(devFd,blocking); //Read in Nonbloking mode
-												printf("q to leave \nOther key to Quit\n->");
-												scanf("%c", &userChoice);
-		                					clrBuffer();
-											}
-											close(devFd);
-										}
+                            if(devFd>0){
+                                while(userChoice!='q'){
+                                    readFunction(devFd,blocking); //Read in Nonbloking mode
+                                    printf("q to leave \nOther key to stay\n->");
+                                    scanf("%c", &userChoice);
+                                clrBuffer();
+                                }
+                                close(devFd);
+                            }
                             break;
 
                         case '3' :
-                              blocking = 1;
-										devFd = openDriverWrite(blocking); //Open driver in Blocking Write Mode
+                            blocking = 1;
+                            devFd = openDriverReadWrite(blocking); //Open driver in Blocking Write Mode
 
-										if(devFd>0){
-											while(userChoice!='q'){
-												writeFunction(devFd,blocking); //Write in Nonbloking mode
-												printf("q to leave \nOther key to Quit\n->");
-												scanf("%c", &userChoice);
-		                					clrBuffer();
-											}
-											close(devFd);
-										}
+                            if(devFd>0){
+                                while(userChoice!='q'){
+                                    writeFunction(devFd,blocking); //Write in Nonbloking mode
+                                    printf("q to leave \nOther key to stay\n->");
+                                    scanf("%c", &userChoice);
+                                clrBuffer();
+                                }
+                                close(devFd);
+                            }
 
                             break;
                         case '4' :
-                              blocking = 0;
-										devFd = openDriverWrite(blocking); //Open driver in Blocking Write Mode
+                            blocking = 0;
+                            devFd = openDriverReadWrite(blocking); //Open driver in Blocking Write Mode
 
-										if(devFd>0){
-											while(userChoice!='q'){
-												writeFunction(devFd,blocking); //Write in Nonbloking mode
-												printf("q to leave \nOther key to Quit\n->");
-												scanf("%c", &userChoice);
-		                					clrBuffer();
-											}
-											close(devFd);
-										}
+                            if(devFd>0){
+                                while(userChoice!='q'){
+                                    writeFunction(devFd,blocking); //Write in Nonbloking mode
+                                    printf("q to leave \nOther key to stay\n->");
+                                    scanf("%c", &userChoice);
+                                clrBuffer();
+                                }
+                                close(devFd);
+                            }
                             break;
-
+                        }
                     break;
 
-                case '4':  //Configure the module with IOCTL
+                case '4':  //Commandes IOCTL
 
-                    // TO DO
+
+                    clrTerminal();
+                    printf("------------IOCTL Commands--------\n");
+                    printf("----------------------------------\n \n");
+
+                    blocking = 0; //NonBlocking
+                    devFd = openDriverWrite(blocking); //Open driver in Blocking Write Mode
+
+                    if(devFd>0){
+                        while(userChoice!='q'){
+                            printf("    1) Get Number of Data\n    2) Get Number of Reader\n    3) Get Size of Circular Buffer\n    4) Set Size of the Buffer\n \n  q)Back to menu\n-> ");
+                            scanf("%c", &userChoice);
+                            clrBuffer();
+                            switch (userChoice){
+                            case '1' :
+                                 printf("-------Get Num of Data-------\n");
+                                 printf("Number of Data in the buffer : %ld \n",ioctlFunction(devFd, 1,0));
+                                break;
+
+                            case '2' :
+                                printf("-------Get Num of Reader-------\n");
+                                printf("Number of Reader : %ld \n",ioctlFunction(devFd, 2,0));
+                                break;
+
+                            case '3' :
+                                printf("-------Get Buffer Size--------\n");
+                                printf("Size of the buffer : %ld \n",ioctlFunction(devFd, 3,0));
+                                break;
+
+                            case '4' :
+                                printf("-------Set Buffer Size--------\n");
+                                printf("Enter the new buffer size\n-> ");
+                                scanf("%lu", &bufferSize);
+                                clrBuffer();
+                                if((bufferSize<0) || (bufferSize>512)){
+                                    printf("Error : Enter a value between 0 and 512 \n");
+                                }
+                                else{
+                                    if((ioctlFunction(devFd, 4,bufferSize))<0){
+                                        printf("Error : ioctl function return an error value\n");
+                                    }
+                                    else{
+                                        printf("Buffer size change to : %lu\n",bufferSize);
+                                    }
+                                }
+                                break;
+                            }
+                            printf("\n\n\n");
+                        }
+                        close(devFd);
+                    }
 
                     break;
 
