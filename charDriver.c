@@ -195,7 +195,7 @@ int buf_open (struct inode *inode, struct file *filp){
     //Ouveture en lecture seule
     else if ( (filp->f_flags & O_ACCMODE) == O_RDONLY){
 		  down_read (&BDev.rw_semBuf); //Capture un verrou de lecture
-          BDev.numReader++;
+        BDev.numReader++;
 		  up_read (&BDev.rw_semBuf); //Relache le verrou de lecture
 		  printk(KERN_WARNING"buf_open in read only mode (%s:%u)\n", __FUNCTION__, __LINE__);
     }
@@ -321,7 +321,7 @@ ssize_t buf_write (struct file *filp, const char __user *ubuf, size_t count,
 	 return count;
 }
 
-long buf_ioctl (struct file *flip, unsigned int cmd, unsigned long arg){
+int buf_ioctl (struct file *flip, unsigned int cmd, unsigned long arg){
 
     int err = 0, i = 0;
     long retval = 0;
