@@ -1,0 +1,14 @@
+#ifndef IOCTLCMD_H
+#define IOCTLCMD_H
+
+/* attribution des numero de commande ioctl */
+#define CHARDRIVER_IOC_MAGIC 'j'
+
+#define CHARDRIVER_IOC_GETNUMDATA _IOR(CHARDRIVER_IOC_MAGIC,0,unsigned short)
+#define CHARDRIVER_IOC_GETNUMREADER _IOR(CHARDRIVER_IOC_MAGIC,1,unsigned short)
+#define CHARDRIVER_IOC_GETBUFSIZE _IOR(CHARDRIVER_IOC_MAGIC,2,unsigned short)
+#define CHARDRIVER_IOC_SETBUFSIZE _IOW(CHARDRIVER_IOC_MAGIC,3,unsigned short)
+
+#define CHARDRIVER_IOC_MAXNR 3
+
+#endif // IOCTLCMD_H
