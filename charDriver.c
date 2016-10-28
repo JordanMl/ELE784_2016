@@ -312,10 +312,10 @@ ssize_t buf_write (struct file *filp, const char __user *ubuf, size_t count,
      for(nbWriteChar=0;nbWriteChar<count;nbWriteChar++){
         if(BufIn(&Buffer, &BDev.WriteBuf[nbWriteChar])){
             printk(KERN_WARNING"buf_write (%s:%u)\n  Bufin return < 0 ", __FUNCTION__, __LINE__);
+				break;
         }
         else{
             printk(KERN_WARNING"buf_write (%s:%u)\n  WriteBuf[%d]= %c copie dans Buffer\n", __FUNCTION__, __LINE__,nbWriteChar,BDev.WriteBuf[nbWriteChar]);
-            break;
         }
      }
 	 printk(KERN_ALERT"buf_write : function reads %d caracter(s)(%s:%u) \n",nbWriteChar, __FUNCTION__, __LINE__);
