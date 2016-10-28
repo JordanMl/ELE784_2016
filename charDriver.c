@@ -231,7 +231,7 @@ ssize_t buf_read (struct file *filp, char __user *ubuf, size_t count,
 
 	 int nbReadChar=0;
 
-     if ( ((filp->f_flags & O_ACCMODE) == O_WRONLY) || ((filp->f_flags & O_ACCMODE) == O_RDWR) ){
+     if ( ((filp->f_flags & O_ACCMODE) == O_WRONLY)){
         return -EBADRQC;
      }
      ///Debut de region critique
@@ -259,7 +259,6 @@ ssize_t buf_read (struct file *filp, char __user *ubuf, size_t count,
              printk(KERN_ALERT"Buffer_read (%s:%u) \n => Lecture dans le buffer : BDev.ReadBuf[%d] = %c  \n", __FUNCTION__, __LINE__,nbReadChar,BDev.ReadBuf[nbReadChar]);
              break;
          }
-         BDev.numData--;
      }
 
     printk(KERN_ALERT"Buffer_read (%s:%u) \n => lecture de %d caracters  \n", __FUNCTION__, __LINE__,nbReadChar);
@@ -270,6 +269,7 @@ ssize_t buf_read (struct file *filp, char __user *ubuf, size_t count,
          return -EFAULT;
      }
     printk(KERN_ALERT"Buffer_read (%s:%u) \n => Copy to user OK  \n", __FUNCTION__, __LINE__);
+    BDev.numData = BDev.numData-nbReadChar;
     ///Fin de region critique
     up_read (&BDev.rw_semBuf);
     return nbReadChar;
@@ -317,11 +317,11 @@ ssize_t buf_write (struct file *filp, const char __user *ubuf, size_t count,
             printk(KERN_WARNING"buf_write (%s:%u)\n  WriteBuf[%d]= %c copie dans Buffer\n", __FUNCTION__, __LINE__,nbWriteChar,BDev.WriteBuf[nbWriteChar]);
             break;
         }
-        BDev.numData++;
      }
 	 printk(KERN_ALERT"buf_write : function reads %d caracter(s)(%s:%u) \n",nbWriteChar, __FUNCTION__, __LINE__);
 
 	 printk(KERN_WARNING"buf_write (%s:%u)\n  END  \n   ", __FUNCTION__, __LINE__);
+	 BDev.numData = BDev.numData+nbWriteChar;
 	 ///Fin de region critique
 	 up_write (&BDev.rw_semBuf);
 	 return count;
