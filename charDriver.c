@@ -321,11 +321,11 @@ ssize_t buf_write (struct file *filp, const char __user *ubuf, size_t count,
 	 return count;
 }
 
-int buf_ioctl (struct file *flip, unsigned int cmd, unsigned long arg){
+long buf_ioctl (struct file *flip, unsigned int cmd, unsigned long arg){
 
     int err = 0, i = 0;
     long retval = 0;
-    unsigned int tmp;
+    unsigned long tmp;
     unsigned char *newBuf;
 
     /* verification que la commande corespond à notre pilote */
@@ -352,20 +352,20 @@ int buf_ioctl (struct file *flip, unsigned int cmd, unsigned long arg){
     }
 
     switch(cmd){
-        case CHARDRIVER_IOC_GETNUMDATA :   retval = __put_user(BDev.numData,(int __user*)arg);
+        case CHARDRIVER_IOC_GETNUMDATA :   retval = BDev.numData;
                                            printk(KERN_WARNING"ioctl(%s:%u) GetNumData : %d /n", __FUNCTION__, __LINE__,BDev.numData);
                                            break;
-        case CHARDRIVER_IOC_GETNUMREADER : retval = __put_user(BDev.numReader,(int __user *)arg);
+        case CHARDRIVER_IOC_GETNUMREADER : retval = BDev.numReader;
                                            printk(KERN_WARNING"ioctl(%s:%u) GetNumReader : %d /n", __FUNCTION__, __LINE__,BDev.numReader);
                                            break;
-        case CHARDRIVER_IOC_GETBUFSIZE :   retval = __put_user(Buffer.BufSize, (int __user *)arg);
+        case CHARDRIVER_IOC_GETBUFSIZE :   retval = Buffer.BufSize;
                                            printk(KERN_WARNING"ioctl(%s:%u) GetBufSize : %d /n", __FUNCTION__, __LINE__,Buffer.BufSize);
                                            break;
         case CHARDRIVER_IOC_SETBUFSIZE :   if(!capable(CAP_SYS_ADMIN)){
                                                 printk(KERN_WARNING"ioctl(%s:%u) Permission non accordé/n", __FUNCTION__, __LINE__);
                                                 return -EPERM;
                                            }
-                                           retval = __get_user(tmp, (int __user *)arg);
+                                           tmp = arg;
 
                                            ///Debut région critique
                                            down_write(&BDev.rw_semBuf);
@@ -391,6 +391,7 @@ int buf_ioctl (struct file *flip, unsigned int cmd, unsigned long arg){
                                            ///Fin région critique
                                            up_write(&BDev.rw_semBuf);
                                            printk(KERN_WARNING"ioctl(%s:%u) SetBufSize : %d", __FUNCTION__, __LINE__,Buffer.BufSize);
+                                           retval = 0;
                                            break;
         default : return -ENOTTY;
     }
