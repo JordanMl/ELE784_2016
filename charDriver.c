@@ -231,7 +231,10 @@ ssize_t buf_read (struct file *filp, char __user *ubuf, size_t count,
 
 	 int nbReadChar=0;
 
-     //Debut de region critique
+     if ( ((filp->f_flags & O_ACCMODE) == O_WRONLY) || ((filp->f_flags & O_ACCMODE) == O_RDWR) ){
+        return -EBADRQC;
+     }
+     ///Debut de region critique
 	 down_read (&BDev.rw_semBuf);
      printk(KERN_ALERT"Buffer_read (%s:%u) \n => Capture le verrou de lecture  \n", __FUNCTION__, __LINE__);
 
@@ -277,6 +280,9 @@ ssize_t buf_write (struct file *filp, const char __user *ubuf, size_t count,
 
      int nbWriteChar = 0;
 
+     if ( (filp->f_flags & O_ACCMODE) == O_RDONLY){
+        return -EBADRQC;
+     }
      printk(KERN_WARNING"buf_write start(%s:%u)\n", __FUNCTION__, __LINE__);
 
      //Début région critique
@@ -321,7 +327,7 @@ ssize_t buf_write (struct file *filp, const char __user *ubuf, size_t count,
 	 return count;
 }
 
-long buf_ioctl (struct file *flip, unsigned int cmd, unsigned long arg){
+long buf_ioctl (struct file *filp, unsigned int cmd, unsigned long arg){
 
     int err = 0, i = 0;
     long retval = 0;
@@ -367,12 +373,15 @@ long buf_ioctl (struct file *flip, unsigned int cmd, unsigned long arg){
                                            }
                                            tmp = arg;
 
+                                           if ( (filp->f_flags & O_ACCMODE) == O_RDONLY){
+                                                return -EBADRQC;
+                                            }
                                            ///Debut région critique
                                            down_write(&BDev.rw_semBuf);
                                            //Vérifie que la taille du nouveau Buffer puisse contenir toute les données présentes
                                            if(tmp<(BDev.numData)){
                                                 up_write(&BDev.rw_semBuf); //libère le sémaphore avant de retourner un code d'erreur
-                                                printk(KERN_WARNING"ioctl(%s:%u) BufSize %d < numData %d", __FUNCTION__, __LINE__,tmp,BDev.numData);
+                                                printk(KERN_WARNING"ioctl(%s:%u) BufSize %lu < numData %d", __FUNCTION__, __LINE__,tmp,BDev.numData);
                                                 return -EADV;
                                            }
 
