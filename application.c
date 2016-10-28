@@ -154,12 +154,15 @@ void writeFunction(char blocking,char * bufWrite) {
 int main(void) {
         int i = 0;
 		unsigned int nbCharToWrite = 0;
+        char usrChar = 0;
+        int devFd =  0; //File descriptor for the char device
+        int status = 0;
 
 		char userChoice = '0';
 		char blocking = '0'; //0=nonBlocking 1=Blocking
 
-        char* bufRead;
         char bufWrite[20];
+        char bufRead[20];
 
 		unsigned int incorrectKeyCounter = 0; //While loop security
 
@@ -168,12 +171,42 @@ int main(void) {
             printf("----------------------------------\n");
             printf("------Char Driver Application-----\n");
             printf("----------------------------------\n \n");
-            printf("MENU :\n ----- \n 1) Read \n 2) Write\n 3)Read & Write \n 4)Configure Buffer\n \n 5) Exit\n");
+            printf("MENU :\n ----- \n 0) DEBUG \n 1) Read \n 2) Write\n 3)Read & Write \n 4)Configure Buffer\n \n 5) Exit\n");
             scanf("%c", &userChoice);
             clrBuffer();
 
             switch (userChoice)
             {
+                case '0':    //DEBUG
+                    devFd = open("/dev/charDriverDev_node", O_WRONLY);
+                    if (devFd<=0){
+                        printf("|DEBUG WRITE|_ Error : Open Fail\n");
+                    }
+                    printf("|DEBUG WRITE|_  DevFd value : %d",devFd);
+                   // printf("|DEBUG WRITE|_ Type a character to write in the buffer:\n");
+                    printf("|DEBUG READ|_ Write in buffer ... \n");
+                    //scanf("%s", &bufWrite);
+                    status = write(devFd, "abcd", 4);
+                    if ((status <= 0 )){
+                        printf("|DEBUG WRITE|_ Error : Write Fail\n");
+                    }
+                    close (devFd);
+
+                    devFd = open("/dev/charDriverDev_node", O_RDONLY);
+                    if (devFd<=0){
+                        printf("|DEBUG READ|_ Error : Open Fail\n");
+                    }
+                    printf("|DEBUG READ|_  DevFd value : %d",devFd);
+                     printf("|DEBUG READ|_ Read buffer ... \n");
+                    status = read(devFd, &bufRead, 4);
+
+                    printf("|DEBUG READ|_ Read Return value : %c%c%c%c ... \n",bufRead[0],bufRead[1],bufRead[2],bufRead[3]);
+
+                    printf("WAIT...",devFd);
+                    getchar();
+                    clrTerminal();
+                    break;
+
                 case '1':  //Read from Buffer
                     clrTerminal();
                     printf("------------Read Buffer-----------\n");
@@ -236,7 +269,7 @@ int main(void) {
             else{
                 userChoice = 0; //Reset user choice to continue
             }
-            clrTerminal();
+            //clrTerminal();
 
         }
 
